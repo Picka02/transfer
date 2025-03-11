@@ -1,0 +1,102 @@
+services:
+  ctfd:
+    build: .
+    user: root
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - UPLOAD_FOLDER=/var/uploads
+      - DATABASE_URL=mysql+pymysql://ctfd:ctfd@db/ctfd
+      - REDIS_URL=redis://cache:6379
+      - WORKERS=1
+      - LOG_FOLDER=/var/log/CTFd
+      - ACCESS_LOG=-
+      - ERROR_LOG=-
+      - REVERSE_PROXY=true
+    volumes:
+      - .data/CTFd/logs:/var/log/CTFd
+      - .data/CTFd/uploads:/var/uploads
+      - .:/opt/CTFd:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - db
+    networks:
+        default:
+        internal:
+
+  nginx:
+    image: nginx:stable
+    restart: always
+    volumes:
+      - ./conf/nginx/http.conf:/etc/nginx/nginx.conf
+    ports:
+      - 80:80
+    depends_on:
+      - ctfd
+
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      - MARIADB_ROOT_PASSWORD=ctfd
+      - MARIADB_USER=ctfd
+      - MARIADB_PASSWORD=ctfd
+      - MARIADB_DATABASE=ctfd
+      - MARIADB_AUTO_UPGRADE=1
+    volumes:
+      - .data/mysql:/var/lib/mysql
+    networks:
+        internal:
+    # This command is required to set important mariadb defaults
+    command: [mysqld, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --wait_timeout=28800, --log-warnings=0]
+
+  cache:
+    image: redis:4
+    restart: always
+    volumes:
+    - .data/redis:/data
+    networks:
+        internal:
+  # netcat:
+  #   build: ./netcat_service
+  #   ports:
+  #     - "12345:12345"
+  #   networks:
+  #     - default
+  ctf_easy:
+    image: ubuntu:20.04
+    container_name: ctf_easy
+    ports:
+      - "8081:80"
+    restart: always
+    volumes:
+      - ./easy:/var/www/html
+    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php && systemctl start apache2 && tail -f /dev/null"]
+
+  ctf_medium:
+    image: debian:11
+    container_name: ctf_medium
+    ports:
+      - "8082:80"
+      - "2222:22"
+    restart: always
+    volumes:
+      - ./medium:/var/www/html
+    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php mariadb-server sudo openssh-server && systemctl start apache2 && systemctl start ssh && tail -f /dev/null"]
+
+  ctf_hard:
+    image: kalilinux/kali-rolling
+    container_name: ctf_hard
+    ports:
+      - "8083:80"
+      - "2223:22"
+    restart: always
+    volumes:
+      - ./hard:/var/www/html
+    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php openssh-server && systemctl start apache2 && systemctl start ssh && tail -f /dev/null"]
+      
+networks:
+    default:
+    internal:
+        internal: true
