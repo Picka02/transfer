@@ -33,7 +33,7 @@ services:
     restart: always
     volumes:
       - ./easy:/var/www/html
-    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php && systemctl start apache2 && tail -f /dev/null"]
+    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php && service apache2 start && tail -f /dev/null"]
 
   ctf_medium:
     image: debian:11
@@ -44,7 +44,7 @@ services:
     restart: always
     volumes:
       - ./medium:/var/www/html
-    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php mariadb-server sudo openssh-server && systemctl start apache2 && systemctl start ssh && tail -f /dev/null"]
+    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php mariadb-server sudo openssh-server && service apache2 start && service ssh start && tail -f /dev/null"]
 
   ctf_hard:
     image: kalilinux/kali-rolling
@@ -55,7 +55,7 @@ services:
     restart: always
     volumes:
       - ./hard:/var/www/html
-    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php openssh-server && systemctl start apache2 && systemctl start ssh && tail -f /dev/null"]
+    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php openssh-server && service apache2 start && service ssh start && tail -f /dev/null"]
 EOF
 
 echo "[*] Création des défis..."
