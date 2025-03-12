@@ -32,4 +32,4 @@ services:
     restart: always
     volumes:
       - ./PWN:/app
-    command: ["/bin/bash", "-c", "cd /PWN && ./pwn1"]
+    command: ["/bin/bash", "-c", "cd /app && ./pwn1"]

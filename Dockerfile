@@ -12,4 +12,4 @@ COPY ./PWN /app
 WORKDIR /app
 
 # Run the executable
-CMD ["wine", "my_executable.exe"]
+CMD ["wine", "pwn1"]
