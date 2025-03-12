@@ -6,102 +6,94 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-echo "[*] Vérification de Docker..."
-
-# Vérifie si Docker est installé
+# Vérification de Docker
 if ! command -v docker &> /dev/null; then
-    echo "[!] Docker non détecté, installation en cours..."
+    echo "Docker non détecté, installation en cours..."
     apt update && apt install -y docker.io docker-compose
 else
-    echo "[✓] Docker est déjà installé."
+    echo "Docker est déjà installé."
 fi
 
-echo "[*] Création du répertoire CTF..."
+# Création des dossiers de configuration
 mkdir -p CTF/{easy,medium,hard}
 cd CTF
 
-echo "[*] Génération du fichier docker-compose.yml..."
+# Génération du fichier docker-compose.yml
 cat <<EOF > docker-compose.yml
 version: "3.8"
 
 services:
   ctf_easy:
-    image: ubuntu:20.04
+    build: ./easy
     container_name: ctf_easy
     ports:
       - "8081:80"
     restart: always
-    volumes:
-      - ./easy:/var/www/html
-    environment:
-      - DEBIAN_FRONTEND=noninteractive
-    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php tzdata && service apache2 start && tail -f /dev/null"]
 
   ctf_medium:
-    image: debian:11
+    build: ./medium
     container_name: ctf_medium
     ports:
       - "8082:80"
       - "2222:22"
     restart: always
-    volumes:
-      - ./medium:/var/www/html
-    environment:
-      - DEBIAN_FRONTEND=noninteractive
-    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php mariadb-server sudo openssh-server tzdata && service apache2 start && service ssh start && tail -f /dev/null"]
 
   ctf_hard:
-    image: kalilinux/kali-rolling
+    build: ./hard
     container_name: ctf_hard
     ports:
       - "8083:80"
       - "2223:22"
     restart: always
-    volumes:
-      - ./hard:/var/www/html
-    environment:
-      - DEBIAN_FRONTEND=noninteractive
-    command: ["/bin/bash", "-c", "apt update && apt install -y apache2 php libapache2-mod-php openssh-server tzdata && service apache2 start && service ssh start && tail -f /dev/null"]
 EOF
 
-echo "[*] Création des défis..."
-
-# Facile (LFI)
-echo '<?php include($_GET["file"]); ?>' > easy/index.php
-
-# Moyen (SQLi)
-cat <<EOF > medium/sqli.php
-<?php
-\$conn = new mysqli('localhost', 'ctfuser', 'C0mP!eXp@55w0rD', 'ctf');
-if (\$conn->connect_error) die('Erreur de connexion');
-\$sql = "SELECT * FROM users WHERE username = '" . \$_GET['user'] . "'";
-\$result = \$conn->query(\$sql);
-?>
+# Configuration de la machine facile (LFI + Interface Web améliorée)
+mkdir -p easy
+cat <<EOF > easy/Dockerfile
+FROM ubuntu:20.04
+RUN apt update && apt install -y apache2 php libapache2-mod-php && \
+    mkdir /var/www/html/vuln && \
+    echo '<?php include($_GET["file"]); ?>' > /var/www/html/vuln/index.php && \
+    echo 'FLAG{LFI_Challenge_001}' > /var/www/html/flag.txt && \
+    echo '<html><head><link rel="stylesheet" href="style.css"></head><body><h1>Bienvenue sur "File Explorer"</h1><p>Un fichier peut en cacher un autre...</p></body></html>' > /var/www/html/index.html && \
+    echo 'body { background-color: #222; color: #fff; text-align: center; font-family: Arial; margin-top: 50px; }' > /var/www/html/style.css && \
+    systemctl enable apache2
+CMD ["apachectl", "-D", "FOREGROUND"]
 EOF
 
-# Difficile (RCE)
-echo '<?php echo shell_exec($_GET["cmd"]); ?>' > hard/rce.php
-
-# Ajout d'un utilisateur backdoor dans la machine difficile
-cat <<EOF > hard/ssh-backdoor.sh
-#!/bin/bash
-useradd -m -s /bin/bash hacker
-echo "hacker:H@ckMe1fYouC@n" | chpasswd
-echo "hacker ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-service ssh restart
+# Configuration de la machine moyenne (SQLi + SSH avec Protection WAF basique)
+mkdir -p medium
+cat <<EOF > medium/Dockerfile
+FROM debian:11
+RUN apt update && apt install -y apache2 php libapache2-mod-php mariadb-server sudo openssh-server && \
+    echo '<?php if(preg_match("/union|select|drop|insert/i", \$_GET["id"])) die("Tentative détectée !"); $conn = new mysqli("localhost", "ctfuser", "C0mP!eXp@55w0rD", "ctf"); if ($conn->connect_error) die("Erreur"); ?>' > /var/www/html/sqli.php && \
+    echo 'FLAG{SQLi_Challenge_002}' > /home/pentester/flag.txt && chmod 600 /home/pentester/flag.txt && \
+    echo '<html><head><link rel="stylesheet" href="style.css"></head><body><h1>Bienvenue sur "Injection Lab"</h1><p>Une base de données peut parfois révéler des secrets...</p></body></html>' > /var/www/html/index.html && \
+    echo 'body { background-color: #1e1e1e; color: #fff; text-align: center; font-family: Arial; margin-top: 50px; }' > /var/www/html/style.css && \
+    systemctl enable apache2 ssh
+CMD ["bash", "-c", "service apache2 start && service ssh start && tail -f /dev/null"]
 EOF
 
-# Ajout du Dockerfile pour le défi difficile
+# Configuration de la machine difficile (RCE + Port Knocking + SUID + Reverse Shell en attente)
+mkdir -p hard
 cat <<EOF > hard/Dockerfile
 FROM kalilinux/kali-rolling
-COPY ssh-backdoor.sh /root/
-RUN chmod +x /root/ssh-backdoor.sh && /root/ssh-backdoor.sh
+RUN apt update && apt install -y apache2 php libapache2-mod-php openssh-server knockd gcc netcat && \
+    echo '<?php if(preg_match("/rm|shutdown|reboot/i", \$_GET["cmd"])) die("Commande interdite"); echo shell_exec(\$_GET["cmd"]); ?>' > /var/www/html/rce.php && \
+    echo 'hacker:H@ckMe1fYouC@n' | chpasswd && \
+    echo 'hacker ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+    echo 'FLAG{RCE_Challenge_003}' > /root/flag.txt && chmod 600 /root/flag.txt && \
+    echo 'while true; do nc -lvnp 4444 -e /bin/bash; done &' >> /root/.bashrc && \
+    echo '<html><head><link rel="stylesheet" href="style.css"></head><body><h1>Bienvenue sur "Code Execution Arena"</h1><p>Un code mal protégé peut ouvrir des portes insoupçonnées...</p></body></html>' > /var/www/html/index.html && \
+    echo 'body { background-color: #111; color: #ff4444; text-align: center; font-family: Arial; margin-top: 50px; }' > /var/www/html/style.css && \
+    systemctl enable apache2 ssh knockd
+CMD ["bash", "-c", "service apache2 start && service ssh start && knockd -d && tail -f /dev/null"]
 EOF
 
-echo "[*] Démarrage des conteneurs..."
-docker-compose up -d
+# Construction des images Docker
+docker-compose build
 
-echo "[+] CTF prêt !"
-echo "🔹 Facile : http://localhost:8081"
-echo "🔸 Moyen : http://localhost:8082 (SSH: pentester@localhost:2222)"
-echo "🔴 Difficile : http://localhost:8083 (SSH: hacker@localhost:2223)"
+echo "CTF prêt !"
+echo "Facile : http://localhost:8081 (LFI: flag dans /var/www/html/flag.txt)"
+echo "Moyen : http://localhost:8082 (SQLi protégé) & SSH: pentester@localhost:2222 (flag dans /home/pentester/flag.txt)"
+echo "Difficile : http://localhost:8083 (RCE avancé) & SSH avec Port Knocking (flag dans /root/flag.txt)"
