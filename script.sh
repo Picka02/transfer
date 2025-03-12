@@ -15,7 +15,7 @@ else
 fi
 
 # Création des dossiers de configuration
-mkdir -p CTF/{easy,medium,hard}
+mkdir -p CTF/{easy,medium,hard,pwn}
 cd CTF
 
 # Génération du fichier docker-compose.yml
@@ -45,6 +45,16 @@ services:
       - "8083:80"
       - "2223:22"
     restart: always
+
+  ctf_pwn:
+    build: ./pwn
+    container_name: ctf_pwn
+    ports:
+      - "8084:80"
+    restart: always
+    volumes:
+      - ./PWN:/app
+    command: ["/bin/bash", "-c", "cd /app && ./my_executable.exe"]
 EOF
 
 # Configuration de la machine facile (LFI + Interface Web améliorée)
@@ -90,10 +100,34 @@ RUN apt update && apt install -y apache2 php libapache2-mod-php openssh-server k
 CMD ["bash", "-c", "service apache2 start && service ssh start && knockd -d && tail -f /dev/null"]
 EOF
 
+# Configuration de la machine PWN (Interagir avec un exécutable)
+mkdir -p pwn
+cat <<EOF > pwn/Dockerfile
+FROM ubuntu:20.04
+
+# Install Wine to run Windows executables
+RUN dpkg --add-architecture i386 && \
+    apt update && \
+    apt install -y wine32
+
+# Copy the executable to the container
+COPY ./PWN /app
+
+# Set the working directory
+WORKDIR /app
+
+# Run the executable
+CMD ["wine", "my_executable.exe"]
+EOF
+
 # Construction des images Docker
 docker-compose build
+
+# Démarrage des conteneurs Docker
+docker-compose up -d
 
 echo "CTF prêt !"
 echo "Facile : http://localhost:8081 (LFI: flag dans /var/www/html/flag.txt)"
 echo "Moyen : http://localhost:8082 (SQLi protégé) & SSH: pentester@localhost:2222 (flag dans /home/pentester/flag.txt)"
 echo "Difficile : http://localhost:8083 (RCE avancé) & SSH avec Port Knocking (flag dans /root/flag.txt)"
+echo "PWN : http://localhost:8084 (Interagir avec l'exécutable)"
